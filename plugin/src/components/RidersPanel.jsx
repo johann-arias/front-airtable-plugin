@@ -27,11 +27,23 @@ async function getEmailFromRecipients(context) {
 async function fetchRidersByEmail(email) {
   const url = `${API_BASE}/api/riders?email=${encodeURIComponent(email)}`;
   const res = await fetch(url);
+  const text = await res.text();
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Search failed (${res.status})`);
+    if (res.status === 404) {
+      throw new Error(
+        'Backend not found (404). Check that VITE_API_URL points to your Railway URL and that the backend is deployed.'
+      );
+    }
+    let msg = text;
+    try {
+      const j = JSON.parse(text);
+      if (j && j.error) msg = j.error;
+    } catch {
+      /* use text as-is */
+    }
+    throw new Error(msg || `Search failed (${res.status})`);
   }
-  return res.json();
+  return text ? JSON.parse(text) : [];
 }
 
 function formatFieldValue(value) {
