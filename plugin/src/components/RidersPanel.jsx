@@ -217,6 +217,8 @@ function RiderCard({ record }) {
     ['End tour (from Associated tour)', 'End tour (from associated tour)'],
     ['End tour', 'Associated']
   );
+  const vintageRiderType = fields['Vintage rider type'] ?? fields['Vintage_rider_type'] ?? fields.vintage_rider_type;
+  const typeOfRider = fields['Type of rider'] ?? fields['Type_of_rider'] ?? fields.type_of_rider;
 
   return (
     <li className="rider-card">
@@ -224,6 +226,8 @@ function RiderCard({ record }) {
       <div className="rider-field">Tour id: {formatFieldValue(tourId)}</div>
       <div className="rider-field">Start tour: {formatDate(startTour)}</div>
       <div className="rider-field">End tour: {formatDate(endTour)}</div>
+      <div className="rider-field">Vintage rider type: {formatFieldValue(vintageRiderType)}</div>
+      <div className="rider-field">Type of rider: {formatFieldValue(typeOfRider)}</div>
     </li>
   );
 }
