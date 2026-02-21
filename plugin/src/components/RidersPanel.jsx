@@ -156,7 +156,7 @@ function RidersPanel() {
     return () => {
       cancelled = true;
     };
-  }, [email]);
+  }, [email, context?.conversation?.id]);
 
   if (error && !email) {
     return <p className="error">{error}</p>;
