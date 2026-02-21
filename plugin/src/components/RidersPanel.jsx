@@ -3,6 +3,17 @@ import { useFrontContext } from '../providers/frontContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+async function uploadVisa(recordId, file, onSuccess) {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const res = await fetch(`${API_BASE}/api/riders/${recordId}/visa`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.error || res.statusText || 'Upload failed');
+  }
+  onSuccess?.();
+}
+
 function getConversationEmail(context) {
   const conv = context?.conversation;
   if (!conv) return null;
@@ -179,7 +190,13 @@ function RidersPanel() {
           ) : (
             <ul className="riders-list">
               {sortRidersByStartTourNewestFirst(riders).map((record) => (
-                <RiderCard key={record.id} record={record} />
+                <RiderCard
+                  key={record.id}
+                  record={record}
+                  onVisaUpload={() =>
+                    fetchRidersByEmail(email).then((recs) => setRiders(Array.isArray(recs) ? recs : []))
+                  }
+                />
               ))}
             </ul>
           )}
@@ -202,11 +219,13 @@ function getFieldByKey(fields, exactKeys, keyContains) {
   return key ? fields[key] : undefined;
 }
 
-function RiderCard({ record }) {
+function RiderCard({ record, onVisaUpload }) {
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
   const fields = record.fields || {};
   const idRider = fields.ID_RIDER ?? fields.id_rider ?? '—';
   const tourId = fields['Tour id'] ?? fields.Tour_id ?? fields.tour_id;
-  // Exact keys: Airtable has "End tour (from associated tour)" with lowercase 'a'
   const startTour = getFieldByKey(
     fields,
     ['Start tour (from Associated tour)', 'Start tour (from associated tour)'],
@@ -219,6 +238,37 @@ function RiderCard({ record }) {
   );
   const vintageRiderType = fields['Vintage rider type'] ?? fields['Vintage_rider_type'] ?? fields.vintage_rider_type;
   const typeOfRider = fields['Type of rider'] ?? fields['Type_of_rider'] ?? fields.type_of_rider;
+  const visa = fields.Visa ?? fields.visa;
+  const visaAttachments = Array.isArray(visa) ? visa : visa ? [visa] : [];
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    setUploadError(null);
+    setUploading(true);
+    uploadVisa(record.id, file, onVisaUpload)
+      .then(() => setUploading(false))
+      .catch((err) => {
+        setUploading(false);
+        setUploadError(err.message);
+      });
+  };
+
+  const handleFileInput = (e) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setUploadError(null);
+    setUploading(true);
+    uploadVisa(record.id, file, onVisaUpload)
+      .then(() => setUploading(false))
+      .catch((err) => {
+        setUploading(false);
+        setUploadError(err.message);
+      });
+  };
 
   return (
     <li className="rider-card">
@@ -228,6 +278,34 @@ function RiderCard({ record }) {
       <div className="rider-field">End tour: {formatDate(endTour)}</div>
       <div className="rider-field">Vintage rider type: {formatFieldValue(vintageRiderType)}</div>
       <div className="rider-field">Type of rider: {formatFieldValue(typeOfRider)}</div>
+      <div className="rider-field rider-visa">
+        <span className="rider-label">Visa</span>
+        {visaAttachments.length > 0 && (
+          <div className="visa-attachments">
+            {visaAttachments.map((att, i) => (
+              <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className="visa-link">
+                {att.filename || 'Attachment'}
+              </a>
+            ))}
+          </div>
+        )}
+        <div
+          className={`visa-dropzone ${dragging ? 'visa-dropzone--active' : ''} ${uploading ? 'visa-dropzone--uploading' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+        >
+          <input
+            type="file"
+            className="visa-input"
+            accept="image/*,.pdf,.doc,.docx"
+            onChange={handleFileInput}
+            disabled={uploading}
+          />
+          {uploading ? 'Uploading…' : 'Drop document here or click to browse'}
+        </div>
+        {uploadError && <p className="visa-error">{uploadError}</p>}
+      </div>
     </li>
   );
 }

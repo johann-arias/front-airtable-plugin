@@ -1,6 +1,14 @@
 import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
+import multer from 'multer';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 const app = express();
 app.use(cors({ origin: true }));
@@ -11,8 +19,23 @@ const {
   AIRTABLE_BASE_ID,
   AIRTABLE_RIDERS_TABLE = 'Riders',
   AIRTABLE_EMAIL_FIELD = 'Mail',
+  AIRTABLE_VISA_FIELD = 'Visa',
+  PUBLIC_URL,
   PORT = 4000,
 } = process.env;
+
+const uploadsMeta = new Map();
+
+function ensureUploadsDir() {
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+function getBaseUrl(req) {
+  if (PUBLIC_URL) return PUBLIC_URL.replace(/\/$/, '');
+  const host = req?.get?.('host') || req?.headers?.host;
+  const proto = req?.get?.('x-forwarded-proto') || req?.protocol || 'http';
+  return host ? `${proto}://${host}` : `http://localhost:${PORT}`;
+}
 
 async function fetchRidersByEmail(email) {
   const baseId = (AIRTABLE_BASE_ID || '').trim();
@@ -61,6 +84,69 @@ async function fetchRidersByEmail(email) {
 
   return records;
 }
+
+async function getRecord(recordId) {
+  const baseId = (AIRTABLE_BASE_ID || '').trim();
+  const tableId = encodeURIComponent((AIRTABLE_RIDERS_TABLE || 'Riders').trim());
+  const res = await fetch(
+    `https://api.airtable.com/v0/${baseId}/${tableId}/${encodeURIComponent(recordId)}`,
+    { headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` } }
+  );
+  if (!res.ok) throw new Error(`Airtable GET: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+async function patchRecord(recordId, fields) {
+  const baseId = (AIRTABLE_BASE_ID || '').trim();
+  const tableId = encodeURIComponent((AIRTABLE_RIDERS_TABLE || 'Riders').trim());
+  const res = await fetch(
+    `https://api.airtable.com/v0/${baseId}/${tableId}/${encodeURIComponent(recordId)}`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields }),
+    }
+  );
+  if (!res.ok) throw new Error(`Airtable PATCH: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+app.get('/api/uploads/:id', (req, res) => {
+  const id = req.params.id;
+  const meta = uploadsMeta.get(id);
+  const filePath = meta?.filePath || path.join(UPLOADS_DIR, id);
+  if (!fs.existsSync(filePath)) return res.status(404).send('Not found');
+  res.setHeader('Content-Type', meta?.mimetype || 'application/octet-stream');
+  res.sendFile(path.resolve(filePath));
+});
+
+app.post('/api/riders/:recordId/visa', upload.single('file'), async (req, res) => {
+  const { recordId } = req.params;
+  if (!req.file?.buffer) {
+    return res.status(400).json({ error: 'No file. Send multipart/form-data with field "file".' });
+  }
+  try {
+    ensureUploadsDir();
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const ext = path.extname(req.file.originalname || '') || '';
+    const filePath = path.join(UPLOADS_DIR, `${id}${ext}`);
+    fs.writeFileSync(filePath, req.file.buffer);
+    const baseUrl = getBaseUrl(req);
+    const fileUrl = `${baseUrl}/api/uploads/${id}${ext}`;
+    uploadsMeta.set(`${id}${ext}`, { filePath, mimetype: req.file.mimetype || 'application/octet-stream' });
+
+    const existing = await getRecord(recordId);
+    const visaField = AIRTABLE_VISA_FIELD || 'Visa';
+    const current = existing.fields?.[visaField] || [];
+    const attachments = Array.isArray(current) ? current : [];
+    await patchRecord(recordId, { [visaField]: [...attachments, { url: fileUrl }] });
+
+    res.json({ ok: true, url: fileUrl, record: await getRecord(recordId) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/riders', async (req, res) => {
   const email = req.query.email?.trim();
