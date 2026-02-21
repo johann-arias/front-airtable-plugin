@@ -1,0 +1,10 @@
+{
+  "name": "front-airtable",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix backend && npm install --prefix plugin",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:plugin": "npm run dev --prefix plugin",
+    "dev": "npm run install:all && (npm run dev:backend & npm run dev:plugin)"
+  }
+}
