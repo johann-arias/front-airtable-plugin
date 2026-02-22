@@ -14,6 +14,8 @@ const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json());
 
+const ALLOWED_ATTACHMENT_FIELDS = ['Visa', 'Passport', 'Driving license', 'International driving license'];
+
 const {
   AIRTABLE_API_KEY,
   AIRTABLE_BASE_ID,
@@ -120,10 +122,13 @@ app.get('/api/uploads/:id', (req, res) => {
   res.sendFile(path.resolve(filePath));
 });
 
-app.post('/api/riders/:recordId/visa', upload.single('file'), async (req, res) => {
+async function handleAttachmentUpload(req, res, fieldName) {
   const { recordId } = req.params;
   if (!req.file?.buffer) {
     return res.status(400).json({ error: 'No file. Send multipart/form-data with field "file".' });
+  }
+  if (!ALLOWED_ATTACHMENT_FIELDS.includes(fieldName)) {
+    return res.status(400).json({ error: `Invalid field. Allowed: ${ALLOWED_ATTACHMENT_FIELDS.join(', ')}` });
   }
   try {
     ensureUploadsDir();
@@ -136,16 +141,23 @@ app.post('/api/riders/:recordId/visa', upload.single('file'), async (req, res) =
     uploadsMeta.set(`${id}${ext}`, { filePath, mimetype: req.file.mimetype || 'application/octet-stream' });
 
     const existing = await getRecord(recordId);
-    const visaField = AIRTABLE_VISA_FIELD || 'Visa';
-    const current = existing.fields?.[visaField] || [];
+    const current = existing.fields?.[fieldName] || [];
     const attachments = Array.isArray(current) ? current : [];
-    await patchRecord(recordId, { [visaField]: [...attachments, { url: fileUrl }] });
+    await patchRecord(recordId, { [fieldName]: [...attachments, { url: fileUrl }] });
 
     res.json({ ok: true, url: fileUrl, record: await getRecord(recordId) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
+}
+
+app.post('/api/riders/:recordId/visa', upload.single('file'), (req, res) => handleAttachmentUpload(req, res, AIRTABLE_VISA_FIELD || 'Visa'));
+
+app.post('/api/riders/:recordId/attachments', upload.single('file'), async (req, res) => {
+  const fieldName = (req.body?.field || req.query?.field || '').trim();
+  if (!fieldName) return res.status(400).json({ error: 'Missing "field" (e.g. Visa, Passport, Driving license, International driving license).' });
+  return handleAttachmentUpload(req, res, fieldName);
 });
 
 app.get('/api/riders', async (req, res) => {
