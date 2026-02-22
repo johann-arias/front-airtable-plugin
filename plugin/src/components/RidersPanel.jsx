@@ -22,6 +22,13 @@ const DOCUMENT_FIELDS = [
   { key: 'International driving license', label: 'International driving license' },
 ];
 
+function getAttachmentLinkUrl(url) {
+  if (!url) return '#';
+  const base = API_BASE.replace(/\/$/, '');
+  if (url.startsWith(base)) return url;
+  return `${base}/api/attachments/proxy?url=${encodeURIComponent(url)}`;
+}
+
 function getConversationEmail(context) {
   const conv = context?.conversation;
   if (!conv) return null;
@@ -234,7 +241,7 @@ function AttachmentSection({ label, fieldKey, attachments, uploading, isDragging
       {attachments.length > 0 && (
         <div className="visa-attachments">
           {attachments.map((att, i) => (
-            <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className="visa-link">
+            <a key={i} href={getAttachmentLinkUrl(att.url)} target="_blank" rel="noopener noreferrer" className="visa-link">
               {att.filename || 'Attachment'}
             </a>
           ))}

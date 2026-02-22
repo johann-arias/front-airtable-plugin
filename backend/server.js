@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
@@ -120,6 +121,46 @@ app.get('/api/uploads/:id', (req, res) => {
   if (!fs.existsSync(filePath)) return res.status(404).send('Not found');
   res.setHeader('Content-Type', meta?.mimetype || 'application/octet-stream');
   res.sendFile(path.resolve(filePath));
+});
+
+function isAllowedProxyUrl(url, req) {
+  const host = url.hostname.toLowerCase();
+  if (host.endsWith('airtableusercontent.com') || host === 'dl.airtable.com') return true;
+  try {
+    const base = new URL(getBaseUrl(req));
+    if (url.hostname === base.hostname && url.protocol === base.protocol) return true;
+  } catch {}
+  return false;
+}
+
+app.get('/api/attachments/proxy', async (req, res) => {
+  const rawUrl = req.query?.url;
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return res.status(400).json({ error: 'Missing query parameter: url' });
+  }
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return res.status(400).json({ error: 'Invalid url' });
+  }
+  if (!isAllowedProxyUrl(url, req)) {
+    return res.status(403).json({ error: 'Proxy only allows Airtable and same-origin URLs' });
+  }
+  try {
+    const proxyRes = await fetch(url.toString(), { redirect: 'follow' });
+    if (!proxyRes.ok) {
+      return res.status(proxyRes.status).send(await proxyRes.text());
+    }
+    const contentType = proxyRes.headers.get('content-type') || 'application/octet-stream';
+    const contentDisposition = proxyRes.headers.get('content-disposition');
+    res.setHeader('Content-Type', contentType);
+    if (contentDisposition) res.setHeader('Content-Disposition', contentDisposition);
+    Readable.fromWeb(proxyRes.body).pipe(res);
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ error: err.message });
+  }
 });
 
 async function handleAttachmentUpload(req, res, fieldName) {
