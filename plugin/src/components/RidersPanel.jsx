@@ -238,6 +238,8 @@ function RiderCard({ record, onVisaUpload }) {
   );
   const vintageRiderType = fields['Vintage rider type'] ?? fields['Vintage_rider_type'] ?? fields.vintage_rider_type;
   const typeOfRider = fields['Type of rider'] ?? fields['Type_of_rider'] ?? fields.type_of_rider;
+  const roomType = fields['Zoho Room type'] ?? fields['Zoho_Room_type'] ?? fields['Room type'] ?? fields.room_type;
+  const firstHotelText = fields['First hotel text'] ?? fields['First_hotel_text'] ?? fields.first_hotel_text;
   const visa = fields.Visa ?? fields.visa;
   const visaAttachments = Array.isArray(visa) ? visa : visa ? [visa] : [];
 
@@ -278,6 +280,8 @@ function RiderCard({ record, onVisaUpload }) {
       <div className="rider-field">End tour: {formatDate(endTour)}</div>
       <div className="rider-field">Vintage rider type: {formatFieldValue(vintageRiderType)}</div>
       <div className="rider-field">Type of rider: {formatFieldValue(typeOfRider)}</div>
+      <div className="rider-field">Room type: {formatFieldValue(roomType)}</div>
+      <div className="rider-field">First hotel text: {formatFieldValue(firstHotelText)}</div>
       <div className="rider-field rider-visa">
         <span className="rider-label">Visa</span>
         {visaAttachments.length > 0 && (
