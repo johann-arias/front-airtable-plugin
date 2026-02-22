@@ -135,6 +135,7 @@ function isAllowedProxyUrl(url, req) {
 
 app.get('/api/attachments/proxy', async (req, res) => {
   const rawUrl = req.query?.url;
+  const forceDownload = req.query?.download === '1' || req.query?.download === 'true';
   if (!rawUrl || typeof rawUrl !== 'string') {
     return res.status(400).json({ error: 'Missing query parameter: url' });
   }
@@ -153,7 +154,11 @@ app.get('/api/attachments/proxy', async (req, res) => {
       return res.status(proxyRes.status).send(await proxyRes.text());
     }
     const contentType = proxyRes.headers.get('content-type') || 'application/octet-stream';
-    const contentDisposition = proxyRes.headers.get('content-disposition');
+    let contentDisposition = proxyRes.headers.get('content-disposition');
+    if (forceDownload && !contentDisposition?.toLowerCase().includes('attachment')) {
+      const ext = contentType.includes('pdf') ? 'pdf' : contentType.includes('image') ? 'jpg' : 'bin';
+      contentDisposition = `attachment; filename="document.${ext}"`;
+    }
     res.setHeader('Content-Type', contentType);
     if (contentDisposition) res.setHeader('Content-Disposition', contentDisposition);
     Readable.fromWeb(proxyRes.body).pipe(res);
